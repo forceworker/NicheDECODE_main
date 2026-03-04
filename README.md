@@ -29,4 +29,4 @@ Step3:Activate the environment:
 
 
 ### Notation
-The Jupyter records of the various experiments in the NicheDECODE work can be found at: https://doi.org/10.5281/zenodo.15687743.
+The Jupyter records of the various experiments in the NicheDECODE work can be found at: https://zenodo.org/records/18857669.
