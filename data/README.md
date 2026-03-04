@@ -1,1 +1,1 @@
-The data used in the **NicheDECODE**  presentation can be downloaded from Zenodo（https://zenodo.org/records/18856556）.
+The data used in the **NicheDECODE**  presentation can be downloaded from Zenodo(10.5281/zenodo.18856556).
