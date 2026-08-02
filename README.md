@@ -1,14 +1,15 @@
 # NicheDECODE
 
-```text
---   --  --   -----  --   --  -----  -----   -----   -----   -----   -----
----  --  --  --      --   --  --     --  --  --     --   --  --  --  --
--- - --  --  --      -------  -----  --   -- -----  --   --  --   -- -----
---  ---  --  --      --   --  --     --  --  --     --   --  --  --  --
---   --  --   -----  --   --  -----  -----   -----   -----   -----   -----
-```
+<pre align="center">
+ _   _ _      _          _____  ______ _____ ____  _____  ______
+| \ | (_)    | |        |  __ \|  ____/ ____/ __ \|  __ \|  ____|
+|  \| |_  ___| |__   ___| |  | | |__ | |   | |  | | |  | | |__
+| . ` | |/ __| '_ \ / _ \ |  | |  __|| |   | |  | | |  | |  __|
+| |\  | | (__| | | |  __/ |__| | |___| |___| |__| | |__| | |____
+|_| \_|_|\___|_| |_|\___|_____/|______\_____\____/|_____/|______|
+</pre>
 
-**Decoding changes in spatial architecture from tissue-level omics data**
+### Decoding changes in spatial architecture from tissue-level omics data
 
 [![Tutorial](https://img.shields.io/badge/Tutorial-GitHub%20Pages-146b68)](https://forceworker.github.io/NicheDECODE_main/)
 [![Data](https://img.shields.io/badge/Data-Zenodo-4f6f9f)](https://doi.org/10.5281/zenodo.18856556)
