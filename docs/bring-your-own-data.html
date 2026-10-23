@@ -26,8 +26,7 @@ It predicts the relative abundance of predefined niches; it does not assign cell
 The current model requires CUDA. Verify <code>torch.cuda.is_available()</code> before training.
 SpatialDE, NaiveDE, FRoGS and CytoSPACE are external preparation tools, not bundled in <code>environment.yml</code>.
 Use their installation instructions and record their versions; CytoSPACE can be run in a separate environment.</p>
-<p>This template expects raw RNA counts. It sums raw counts and applies total-count normalization to 10,000,
-log1p and maximum scaling per pseudo-tissue/bulk sample. Use this template to train a new model for your reference and target cohort.
+<p>Use this template to train a new model for your reference and target cohort.
 Protein data require modality-specific preparation; use the CODEX example as the starting point.</p>
 <h2 id="inputs">1 Prepare the input files</h2>
 <pre>data/custom/

@@ -149,8 +149,6 @@ reuse the NSCLC spatial prior for another tissue. GO embeddings may be reused wh
 species and gene identifiers agree. The guide includes the FRoGS source and a CSV
 conversion example; GO-term membership tables are not embedding matrices.''')
 md('''## 5 Construct pseudo-tissues
-This custom template sums raw RNA counts, then applies total-count normalization
-to 10,000, log1p and per-profile maximum scaling equally to pseudo-tissues and bulk.
 Use this template to train a new model for your reference and target cohort.
 Random mixing samples observations with replacement and recomputes labels from actual
 draws. For spots, requested sampling fractions need not equal cell-weighted labels.
