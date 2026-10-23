@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring your own data | NicheDECODE</title>
+<style>
+body{font-family:system-ui,sans-serif;color:#18202f;line-height:1.65;margin:0}
+main{max-width:960px;margin:auto;padding:32px 24px 80px}h1,h2,h3{line-height:1.2}
+h1{font-size:2.5rem}h2{margin-top:2.6rem}a{color:#146b68}pre{background:#f1f5f7;padding:18px;overflow:auto}
+code{font-size:.9em}table{border-collapse:collapse;width:100%;display:block;overflow:auto}
+td,th{border:1px solid #d9dee8;padding:10px;text-align:left;vertical-align:top}th{background:#edf5f4}
+nav{display:flex;flex-wrap:wrap;gap:16px}li{margin:.4rem 0}.lead{font-size:1.15rem;color:#4d5d6c}
+</style></head>
+<body><main>
+<nav><a href="index.html">Example tutorials</a><a href="#inputs">Inputs</a><a href="#annotations">Niche annotations</a><a href="#spots">CytoSPACE</a><a href="#priors">Priors</a><a href="#sampling">Sampling</a><a href="#outputs">Outputs</a></nav>
+<h1>Bring your own data to NicheDECODE</h1>
+<p class="lead">Use an annotated spatial reference to train a model and infer niche proportions in your own bulk RNA-seq cohort.</p>
+<p><a href="https://github.com/forceworker/NicheDECODE_main/blob/main/tutorials/bring_your_own_data.ipynb">View the template notebook</a> ·
+<a href="https://raw.githubusercontent.com/forceworker/NicheDECODE_main/main/tutorials/bring_your_own_data.ipynb" download>Download notebook</a></p>
+<p>After cloning the repository, open <code>tutorials/bring_your_own_data.ipynb</code> in Jupyter.
+Edit its configuration cell, prepare the four inputs below, and run the cells in order.
+The notebook uses <code>tutorials/byod_utils.py</code> alongside the existing model.
+It predicts the relative abundance of predefined niches; it does not assign cells to new coordinates or discover new niches in bulk samples.</p>
+<h2>Environment and scope</h2>
+<p>Follow the <a href="index.html">installation tutorial</a> to create the NicheDECODE environment.
+The current model requires CUDA. Verify <code>torch.cuda.is_available()</code> before training.
+SpatialDE, NaiveDE, FRoGS and CytoSPACE are external preparation tools, not bundled in <code>environment.yml</code>.
+Use their installation instructions and record their versions; CytoSPACE can be run in a separate environment.</p>
+<p>This template expects raw RNA counts. It sums raw counts and applies total-count normalization to 10,000,
+log1p and maximum scaling per pseudo-tissue/bulk sample. The original NSCLC example instead aggregates
+per-cell log-normalized expression. Use this template to train a new model; do not combine its preprocessing
+with the supplied example checkpoints. Protein data require modality-specific preparation; use the CODEX example as the starting point.</p>
+<h2 id="inputs">1 Prepare the input files</h2>
+<pre>data/custom/
+  reference.h5ad
+  bulk_counts.csv
+  spatialde.csv
+  go_embeddings.csv
+  spot_cell_counts.csv   # spot-resolution references only</pre>
+<table><tr><th>Input</th><th>Required structure</th></tr>
+<tr><td>reference.h5ad</td><td>One section. Rows are cells or spots, columns are genes.
+Unique <code>obs_names</code> and <code>var_names</code>.
+Raw, nonnegative counts in <code>layers['counts']</code> (or X with COUNTS_LAYER=None).
+<code>obsm['spatial']</code>: finite numeric array of shape (n_observations, 2), x then y.
+<code>obs['niche']</code>: one nonempty string/categorical annotation per observation.
+Dense and SciPy sparse count matrices are supported.</td></tr>
+<tr><td>bulk_counts.csv</td><td>Header row: gene_id, sample_1, sample_2, …; rows: genes.
+Numeric raw counts only, unique gene and sample IDs. No coordinates, niche labels or outcomes required.</td></tr>
+<tr><td>spatialde.csv</td><td>One reference-derived row per gene; column <code>g</code> and the ten numeric fields below.</td></tr>
+<tr><td>go_embeddings.csv</td><td>Header row: gene_id, embedding_1, embedding_2, …; one finite, nonzero vector per gene.
+Use the same gene ID system and species as the reference and bulk.</td></tr>
+<tr><td>spot_cell_counts.csv</td><td>Header: spot_id,cell_count. Unique spot IDs matching reference.obs_names;
+finite positive estimates for every retained spot.</td></tr></table>
+<p>A small format illustration (values are illustrative, not a usable training dataset):</p>
+<pre>gene_id,sample_A,sample_B
+EPCAM,120,80
+COL1A1,50,210
+PTPRC,90,60</pre>
+<p>To construct an h5ad from tables, align all metadata by ID before assigning it:</p>
+<pre>import anndata as ad
+import pandas as pd
+
+# Reference expression table: gene rows, cell/spot columns.
+counts = pd.read_csv('reference_counts.csv', index_col=0)
+metadata = pd.read_csv('reference_metadata.csv', index_col=0)
+# metadata columns: x, y, niche; index: cell/spot ID
+assert counts.index.is_unique and counts.columns.is_unique and metadata.index.is_unique
+metadata = metadata.reindex(counts.columns)
+assert metadata[['x', 'y', 'niche']].notna().all().all()
+reference = ad.AnnData(counts.T.astype('float32'), obs=metadata)
+reference.layers['counts'] = reference.X.copy()
+reference.obsm['spatial'] = metadata[['x', 'y']].to_numpy(float)
+reference.write_h5ad('reference.h5ad')</pre>
+<p>For an existing bulk h5ad, rows must be samples and columns genes; assign its raw-count layer to X.
+Do not pass log-expression, z-scores, TPM or FPKM through this raw-count template.
+Convert identifiers consistently upstream and resolve duplicate mappings explicitly. Missing genes are excluded
+when selecting a new shared panel, not filled with fabricated zero expression. Inspect the printed overlap and
+preserve niche-discriminative genes; there is no universal sufficient gene-count threshold.</p>
+<h2 id="annotations">2 Define and format niche annotations</h2>
+<p>Obtain spatial domains from an appropriate spatial method, such as NicheCompass, CellCharter,
+STAligner or SpaNiche, or use expert-reviewed anatomical/histological annotations.
+Follow the chosen method's own workflow, inspect spatial coherence, markers and biological meaning,
+then export one label per reference cell/spot. This guide imports those labels; it does not implement a niche-discovery algorithm.</p>
+<pre>cell_or_spot_id,niche
+spot_001,tumor_interior
+spot_002,tumor_stroma_boundary
+spot_003,stroma</pre>
+<pre>labels = pd.read_csv('niche_annotations.csv', index_col=0)
+assert labels.index.is_unique
+reference.obs['niche'] = labels['niche'].reindex(reference.obs_names)
+assert reference.obs['niche'].notna().all()
+reference.obs['niche'] = reference.obs['niche'].astype('category')</pre>
+<p>Cell type and niche are different annotations: a niche may contain several cell types.
+Cluster numbers from different sections are not automatically equivalent; harmonize their meaning before combining data.
+The template does not automatically remove rare niches. If merging or excluding a niche, justify it biologically,
+record the decision and recognize that outputs then describe proportions relative to the retained label set.</p>
+<h2 id="spots">3 Prepare spot cell counts with CytoSPACE</h2>
+<p>Skip this section for single-cell spatial references. For spot data, prepare matching scRNA counts,
+scRNA cell-type labels, spatial counts and spatial coordinates using the
+<a href="https://github.com/digitalcytometry/cytospace#preparing-input-files">official CytoSPACE input instructions</a>.
+Expression matrices use genes as rows and cells/spots as columns; identifiers must agree between inputs.
+The upstream Seurat export helpers are also available. Run, for example:</p>
+<pre>cytospace -sp scRNA_counts.txt -ctp scRNA_celltypes.txt -stp ST_counts.txt -cp ST_coordinates.txt -o cytospace_output</pre>
+<p>Convert its assigned-cell table to a spot count table (one row per assigned cell):</p>
+<pre>assignments = pd.read_csv('cytospace_output/assigned_locations.csv')
+assert assignments['UniqueCID'].is_unique
+cell_counts = assignments.groupby('SpotID').size().rename('cell_count')
+cell_counts.rename_axis('spot_id').to_csv('data/custom/spot_cell_counts.csv')</pre>
+<p>CytoSPACE documents <code>UniqueCID</code> and <code>SpotID</code> in its
+<a href="https://github.com/digitalcytometry/cytospace#cytospace-outputs">output specification</a>.
+Inspect unassigned spots and resolve them through QC before continuing. Do not silently set missing estimates to one.</p>
+<p>Set <code>SPOT_RESOLUTION=True</code> in the notebook. Spot expression is summed as measured;
+only the supervision labels are weighted by estimated cell numbers. For example, a selected tumor spot with
+8 estimated cells and a stromal spot with 2 cells yield labels (0.8, 0.2), not (0.5, 0.5).
+Each spot has one niche annotation, so the target is an estimated cell-number-weighted domain composition.
+For random mixing, the labels are recomputed after selecting spots; sampled spot fractions are not assumed to be cell fractions.</p>
+<h2 id="priors">4 Prepare spatial and functional priors</h2>
+<h3>SpatialDE features</h3>
+<p>Fit spatial features on the reference only. Following the
+<a href="https://github.com/Teichlab/SpatialDE">SpatialDE preprocessing example</a>, use raw counts,
+variance stabilization and library-size regression, then export its gene-wise results:</p>
+<pre>import numpy as np
+import pandas as pd
+import NaiveDE, SpatialDE
+from tutorials.byod_utils import dense, SPATIAL_FEATURES
+
+counts = pd.DataFrame(dense(reference.layers['counts']),
+                      index=reference.obs_names, columns=reference.var_names)
+# Remove all-zero genes and empty observations upstream.
+info = pd.DataFrame(reference.obsm['spatial'], columns=['x', 'y'], index=counts.index)
+info['total_counts'] = counts.sum(axis=1)
+stabilized = NaiveDE.stabilize(counts.T).T
+residuals = NaiveDE.regress_out(info, stabilized.T, 'np.log(total_counts)').T
+results = SpatialDE.run(info[['x', 'y']], residuals)
+results[['g'] + SPATIAL_FEATURES].to_csv('data/custom/spatialde.csv', index=False)</pre>
+<p>The required fields are <code>FSV, max_delta, max_ll, max_mu_hat, max_s2_t_hat,
+s2_FSV, s2_logdelta, LLR, pval, qval</code>. Keep full fit results rather than only significant genes.
+Inspect missing/nonfinite fits. The notebook aligns rows to the expression gene order, scales each feature
+with the repository's <code>auto_log_then_minmax</code>, and freezes that prior for prediction.</p>
+<p>SpatialDE may require substantial memory for large sections. If using a representative reference subset,
+record the sampling strategy and verify that relevant domains remain represented. Do not concatenate unrelated
+sections into a single coordinate plane. This template intentionally uses one reference section.</p>
+<h3>GO functional embeddings</h3>
+<p>Obtain GO embeddings from <a href="https://github.com/chenhcs/FRoGS">FRoGS</a>.
+Its provided human GO file <code>data/gene_vec_go_256.csv</code> is headerless, with a gene ID followed by embedding values.
+Convert it to the template format:</p>
+<pre>emb = pd.read_csv('FRoGS/data/gene_vec_go_256.csv', header=None, index_col=0)
+emb.index = emb.index.astype(str)
+emb.index.name = 'gene_id'
+emb.columns = [f'embedding_{i}' for i in range(emb.shape[1])]
+emb.to_csv('data/custom/go_embeddings.csv')</pre>
+<p>Match FRoGS identifiers to your expression identifiers with a documented mapping before use.
+For another species, use appropriate GO-derived embeddings or a justified ortholog mapping.
+The notebook constructs a cosine k-nearest-neighbor graph (default k=5), explicitly preserves graph node order,
+and reports embedding coverage. Genes lacking embeddings can remain in the expression encoder but are absent
+from the graph. Negative similarity weights or invalid vectors trigger an error for inspection.</p>
+<h2 id="sampling">5 Set pseudo-tissue construction parameters</h2>
+<table><tr><th>Notebook parameter</th><th>Meaning and selection</th></tr>
+<tr><td>WIDTH_FRACTION (0.10)</td><td>Window width = this fraction × unrotated reference x span.
+Uses coordinate units, not a fixed number of cells. Each window spans the rotated section's full height.
+Increase if too few observations survive; inspect niche diversity and expected target tissue scale.</td></tr>
+<tr><td>OVERLAP (0.5)</td><td>Stride = width × (1 − overlap). Must be at least 0 and below 1.
+Higher values produce more correlated windows, not more independent biological samples.</td></tr>
+<tr><td>ANGLES ([0,45,90])</td><td>Coordinate rotations in degrees. Expands sampling orientations without adding biological replicates.</td></tr>
+<tr><td>MIN_OBSERVATIONS (10)</td><td>Minimum cells or spots per retained window, not estimated cells per spot.</td></tr>
+<tr><td>MIN_NICHES (1)</td><td>Minimum represented niches per window. Use 1 to retain niche-pure windows;
+2 excludes them and is appropriate only if this matches the intended task.</td></tr>
+<tr><td>RANDOM_SAMPLES (1000)</td><td>Additional mixtures. Independent uniform draws are normalized to sampling probabilities;
+this is not uniform sampling of the composition simplex. Counts are allocated by multinomial sampling.</td></tr>
+<tr><td>RANDOM_OBSERVATIONS (None)</td><td>Defaults to mean retained window size. Random draws use replacement from each niche pool.
+For spots this counts spots; labels use estimated cells. This bounded sampler differs from the legacy rejection sampler.</td></tr></table>
+<p>Start with these settings, inspect the printed sample sizes and niche distributions, then tune on reference-derived
+validation data. Avoid windows across section boundaries. To use multiple sections, generate pseudo-tissues separately
+and establish a consistent reference-prior strategy before combining them; the single-section template does not automate this.</p>
+<h2 id="outputs">6 Train, predict and interpret outputs</h2>
+<p>The notebook splits reference-derived pseudo-tissues for training and early stopping, trains a new model,
+and predicts the unlabelled bulk samples through a dedicated inference function. It does not create fake ground-truth labels.
+An overlapping-window split is only an optimization validation split. For independent evaluation, separate whole
+sections/donors before pseudo-tissue generation and prior construction.</p>
+<table><tr><th>Output</th><th>Contents</th></tr>
+<tr><td>res/RUN_NAME/niche_proportions.csv</td><td>Samples × niches; original sample IDs preserved; rows sum to one.</td></tr>
+<tr><td>res/RUN_NAME/manifest.json</td><td>Ordered genes, graph genes, niches, preprocessing, input paths and run parameters.</td></tr>
+<tr><td>res/RUN_NAME/model_inputs.npz</td><td>Frozen spatial prior and graph edges/weights.</td></tr>
+<tr><td>save_models/RUN_NAME/best_model.pt</td><td>Encoder, GCN and predictor weights selected by validation RMSE.</td></tr></table>
+<p>Use a fresh RUN_NAME for each run. The template stops if output directories/checkpoints exist.
+Do not reuse a checkpoint after changing gene order, normalization, niches or priors. Store the inputs and their
+provenance with the output manifest. A high proportion is relative to the trained niche set; it does not measure
+absolute tissue volume, and an absent niche label cannot be discovered at prediction time.</p>
+<h2>Troubleshooting</h2>
+<ul><li><strong>No windows:</strong> inspect coordinate spread, lower MIN_OBSERVATIONS or MIN_NICHES, or adjust width.</li>
+<li><strong>Missing annotations/cell counts:</strong> inspect exact cell/spot IDs and section prefixes; align by ID, never row order.</li>
+<li><strong>Few shared genes:</strong> check species, gene identifier conversion, CSV orientation and reference panel coverage.</li>
+<li><strong>CUDA unavailable:</strong> check the active Jupyter kernel and CUDA-enabled PyTorch installation.</li>
+<li><strong>Out of memory:</strong> reduce batch size and pseudo-tissue count; select reference-informative genes before generating dense model inputs.</li>
+<li><strong>No bulk accuracy metrics:</strong> expected when measured niche composition is unavailable. Pseudo-tissue validation is not a substitute for independent biological validation.</li></ul>
+</main></body></html>
