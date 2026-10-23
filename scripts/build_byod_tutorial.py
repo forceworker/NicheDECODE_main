@@ -151,9 +151,7 @@ conversion example; GO-term membership tables are not embedding matrices.''')
 md('''## 5 Construct pseudo-tissues
 This custom template sums raw RNA counts, then applies total-count normalization
 to 10,000, log1p and per-profile maximum scaling equally to pseudo-tissues and bulk.
-The legacy NSCLC notebook aggregates per-cell log-normalized values instead; this
-template is an explicit raw-count workflow and trains a new model, not an exact
-reproduction of that notebook or its checkpoints.
+Use this template to train a new model for your reference and target cohort.
 Random mixing samples observations with replacement and recomputes labels from actual
 draws. For spots, requested sampling fractions need not equal cell-weighted labels.
 No niche is automatically removed. Review rare categories before choosing the output

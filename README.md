@@ -83,7 +83,7 @@ For a new spatial reference and bulk RNA-seq cohort, start with the
 [the template notebook](tutorials/bring_your_own_data.ipynb).
 The guide specifies `.h5ad` inputs, niche annotation import, sampling parameters,
 SpatialDE/GO priors, unlabelled bulk prediction, and the CytoSPACE spot-resolution branch.
-It uses raw RNA counts and trains a new model; see the guide for differences from the example preprocessing.
+It uses raw RNA counts and trains a new model for your reference and target cohort.
 
 [Read the guide on GitHub Pages](https://forceworker.github.io/NicheDECODE_main/bring-your-own-data.html).
 
